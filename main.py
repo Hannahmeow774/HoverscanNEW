@@ -16,16 +16,19 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
+) 
 
 # 3. Load YOLOv8 Model
 # Ensure 'best.pt' is in the same directory as this file
+# Change this path to the location of your Roboflow weights
+model_path = r"C:\Users\imran\Downloads\Hoverscan LATEST\Hoverscan websiteee\backend\best.pt"
+
 try:
-    model = YOLO(r"C:\Users\user\Desktop\HoverScan\runs\results\bridge_25k_run_old\weights\best.pt")
+    model = YOLO(model_path)
+    print(f"Custom Roboflow model loaded from {model_path}")
 except Exception as e:
-    print(f"Error loading model: {e}")
-    # Fallback to base model if best.pt is missing for demo purposes
-    model = YOLO("yolov8n.pt") 
+    print(f"Error loading custom model: {e}. Falling back to default.")
+    model = YOLO("yolov8n.pt")
 
 # From your data.yaml: 
 # ['bridge joint', 'crack', 'mold', 'peeling', 'potholes', 'road bleeding', 
@@ -51,22 +54,17 @@ async def analyze_image(file: UploadFile = File(...)):
         image = Image.open(io.BytesIO(contents)).convert("RGB")
 
         # Run Inference
-        results = model.predict(source=image, conf=0.25, save=False)
+        results = model.predict(source=image, conf=0.45, save=False)
         
         detections = []
         for r in results:
             for box in r.boxes:
-                # Extract data
-                class_id = int(box.cls[0])
-                label = model.names[class_id]
-                confidence = float(box.conf[0])
-                coords = box.xyxy[0].tolist() # [x1, y1, x2, y2]
-                
+                coords = box.xyxyn[0].tolist() # MUST BE xyxyn
                 detections.append({
-                    "type": label,
-                    "confidence": confidence,
-                    "bbox": coords,
-                    "severity": "High" if confidence > 0.8 else "Medium" if confidence > 0.5 else "Low"
+                    "type": model.names[int(box.cls[0])],
+                    "confidence": float(box.conf[0]),
+                    "bbox": coords, # Now sends [xmin, ymin, xmax, ymax] as 0-1
+                    "severity": "High" if float(box.conf[0]) > 0.8 else "Low"
                 })
 
         # Logic for "Analysis Section": Only show highest rate
