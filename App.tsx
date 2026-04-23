@@ -6,7 +6,7 @@ import {
   Camera, Target, Layers, MapPin, 
   Database, CheckCircle2, MoreVertical, Bug,
   BarChart3, Activity, FileText, Search, Filter, XCircle,
-  MousePointer2, Trash2, X
+  MousePointer2, Trash2, X, MoveDiagonal2
 } from 'lucide-react';
 
 // --- CONFIGURATION FROM DATA.YAML ---
@@ -22,6 +22,7 @@ const App = () => {
   const [uploadedImage, setUploadedImage] = useState(null);
   const [analysisResults, setAnalysisResults] = useState(null);
   const [manualDetections, setManualDetections] = useState([]);
+  const [resizingId, setResizingId] = useState(null); // Track which box is being resized
   const [assets, setAssets] = useState([
     { id: 'AST-992', name: 'Batang Sadong Bridge.jpg', date: '2026-04-10', status: 'Verified' },
     { id: 'AST-441', name: 'Darul Hana S-Bridge.png', date: '2026-04-12', status: 'Pending' }
@@ -74,18 +75,55 @@ const App = () => {
     }
   };
 
+  // --- RESIZING HANDLER ---
+  useEffect(() => {
+    const handleGlobalMouseMove = (e) => {
+      if (!resizingId || !imageContainerRef.current) return;
+
+      const rect = imageContainerRef.current.getBoundingClientRect();
+      // Calculate coordinates normalized to the 640x640 space used by the model
+      const currentX = ((e.clientX - rect.left) / rect.width) * 640;
+      const currentY = ((e.clientY - rect.top) / rect.height) * 640;
+
+      setManualDetections(prev => prev.map(det => {
+        if (det.id === resizingId) {
+          // Update the bottom-right coordinates (x2, y2)
+          // We enforce a minimum size of 10x10 to prevent inversion
+          const x2 = Math.max(det.bbox[0] + 10, currentX);
+          const y2 = Math.max(det.bbox[1] + 10, currentY);
+          return { ...det, bbox: [det.bbox[0], det.bbox[1], x2, y2] };
+        }
+        return det;
+      }));
+    };
+
+    const handleGlobalMouseUp = () => {
+      setResizingId(null);
+    };
+
+    if (resizingId) {
+      window.addEventListener('mousemove', handleGlobalMouseMove);
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [resizingId]);
+
   // --- MANUAL TAGGING LOGIC ---
   const handleImageClick = (e) => {
-    if (!uploadedImage || isAnalyzing) return;
+    // Prevent creating a new tag if we are currently resizing an existing one
+    if (!uploadedImage || isAnalyzing || resizingId) return;
     
-    // Calculate 640x640 normalized coordinates
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 640;
     const y = ((e.clientY - rect.top) / rect.height) * 640;
 
     const newTag = {
       id: `manual-${Date.now()}`,
-      type: 'crack', // Default manual tag
+      type: 'crack',
       confidence: 1.0,
       bbox: [x - 30, y - 30, x + 30, y + 30],
       isManual: true
@@ -104,7 +142,7 @@ const App = () => {
     } else {
       setAnalysisResults(prev => ({
         ...prev,
-        all_detections: prev.all_detections.filter((_, idx) => idx !== id)
+        all_detections: prev.all_detections?.filter((_, idx) => idx !== id) || []
       }));
     }
   };
@@ -153,7 +191,7 @@ const App = () => {
         <div className="bg-indigo-600 p-8 rounded-[3rem] text-white flex flex-col justify-between shadow-2xl shadow-indigo-600/20">
           <div>
             <h3 className="font-black text-xl leading-tight mb-2 italic uppercase">Smart<br/>Correction</h3>
-            <p className="text-xs opacity-70 leading-relaxed">Click to tag missed defects. Click 'X' or Right-Click on any tag to remove accidental entries.</p>
+            <p className="text-xs opacity-70 leading-relaxed">Click to tag missed defects. Use the handle on the bottom-right of boxes to resize.</p>
           </div>
           <button onClick={() => setActiveTab('analysis')} className="w-full bg-black text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all">
             Launch Analysis
@@ -185,15 +223,17 @@ const App = () => {
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Manual Tag</span>
               </div>
             </div>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
-              <MousePointer2 size={12} className="text-indigo-400" /> Click image to tag • Click 'X' to remove
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-3">
+              <span className="flex items-center gap-1"><MousePointer2 size={12} className="text-indigo-400" /> Tag</span>
+              <span className="flex items-center gap-1"><MoveDiagonal2 size={12} className="text-amber-400" /> Resize</span>
+              <span className="flex items-center gap-1"><X size={12} className="text-rose-400" /> Remove</span>
             </p>
           </div>
 
           <div 
             ref={imageContainerRef}
             onClick={handleImageClick}
-            className="bg-black rounded-[3rem] border border-white/10 overflow-hidden relative aspect-video flex items-center justify-center ring-1 ring-white/5 group shadow-2xl cursor-crosshair"
+            className="bg-black rounded-[3rem] border border-white/10 overflow-hidden relative aspect-video flex items-center justify-center ring-1 ring-white/5 group shadow-2xl cursor-crosshair select-none"
           >
             {uploadedImage ? (
               <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden pointer-events-none">
@@ -209,7 +249,7 @@ const App = () => {
                     <div 
                       key={det.id}
                       onContextMenu={(e) => removeDetection(e, det.id, det.isManual)}
-                      className={`absolute border-2 transition-all ${
+                      className={`absolute border-2 transition-colors ${
                         det.isManual ? 'border-amber-400 bg-amber-400/20 shadow-[0_0_15px_rgba(251,191,36,0.2)]' : 'border-indigo-400 bg-indigo-500/10'
                       } group/tag animate-in fade-in zoom-in-95 duration-200`}
                       style={{
@@ -238,17 +278,29 @@ const App = () => {
                           )}
                         </div>
                         
-                        {/* THE NEW REMOVE BUTTON */}
                         <button 
                           onClick={(e) => removeDetection(e, det.id, det.isManual)}
                           className={`h-full aspect-square flex items-center justify-center border-l transition-colors ${
                             det.isManual ? 'border-black/10 hover:bg-black/20' : 'border-white/10 hover:bg-white/20'
                           }`}
-                          title="Remove this tag"
                         >
                           <X size={10} strokeWidth={4} />
                         </button>
                       </div>
+
+                      {/* RESIZE HANDLE - Only for Manual Tags */}
+                      {det.isManual && (
+                        <div 
+                          className="absolute -right-1 -bottom-1 w-4 h-4 cursor-nwse-resize z-40 flex items-center justify-center group-hover/tag:scale-125 transition-transform"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setResizingId(det.id);
+                          }}
+                        >
+                          <div className="w-2 h-2 bg-amber-400 rounded-full border border-black/20 shadow-sm" />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -268,7 +320,6 @@ const App = () => {
             )}
           </div>
 
-          {/* Chart Module */}
           <div className="bg-[#0c0e14] border border-white/5 p-8 rounded-[3rem]">
             <h4 className="text-[10px] font-black uppercase text-slate-500 mb-6 tracking-widest flex items-center gap-2">
               <BarChart3 size={14} className="text-indigo-500" /> Damage Summary
@@ -287,7 +338,6 @@ const App = () => {
           </div>
         </div>
 
-        {/* Audit Sidebar */}
         <div className="lg:col-span-4 flex flex-col space-y-6">
           <div className="bg-[#0c0e14] border border-white/5 p-8 rounded-[3rem] shadow-2xl flex flex-col justify-between flex-1">
             <div>
@@ -328,7 +378,6 @@ const App = () => {
     );
   };
 
-  // --- REUSABLE PLACEHOLDERS ---
   const MapViewModule = () => (
     <div className="h-full flex items-center justify-center border border-dashed border-white/10 rounded-[3rem] bg-white/5">
       <div className="text-center">
@@ -387,7 +436,7 @@ const App = () => {
               { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
               { id: 'map', icon: MapIcon, label: 'Map View' },
               { id: 'assets', icon: Database, label: 'Asset Hub' },
-              { id: 'defects', icon: AlertTriangle, label: 'Model Classes' },
+              { id: 'defects', icon: AlertTriangle, label: 'Defect Classes' },
               { id: 'analysis', icon: BarChart3, label: 'AI Analysis' },
             ].map((item) => (
               <button
@@ -402,15 +451,6 @@ const App = () => {
               </button>
             ))}
           </nav>
-        </div>
-        <div className="mt-auto p-8">
-           <div className="bg-indigo-900/10 border border-indigo-500/10 rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Local Link</span>
-              </div>
-              <p className="text-[10px] text-slate-600 font-bold">READY TO VERIFY</p>
-           </div>
         </div>
       </aside>
 
