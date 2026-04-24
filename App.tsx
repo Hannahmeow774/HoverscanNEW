@@ -160,13 +160,22 @@ const MapViewModule = () => {
   );
 };
 
+interface Detection {
+  id: string | number;
+  type: string;
+  confidence: number;
+  bbox: [number, number, number, number]; // [x1, y1, x2, y2]
+  isManual: boolean;
+}
 
 const App = () => {
+  const [draggingId, setDraggingId] = useState<string | number | null>(null);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [analysisResults, setAnalysisResults] = useState(null);
-  const [manualDetections, setManualDetections] = useState([]);
+  const [manualDetections, setManualDetections] = useState<Detection[]>([]);
   const [resizingId, setResizingId] = useState(null); // Track which box is being resized
   const [assets, setAssets] = useState([
     { id: 'AST-992', name: 'Batang Sadong Bridge.jpg', date: '2026-04-10', status: 'Verified' },
@@ -223,23 +232,41 @@ const App = () => {
     }
   };
 
-  // --- RESIZING HANDLER ---
-  useEffect(() => {
-    const handleGlobalMouseMove = (e) => {
-      if (!resizingId || !imageContainerRef.current) return;
-
+// --- RESIZING HANDLER ---
+useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!imageContainerRef.current) return;
       const rect = imageContainerRef.current.getBoundingClientRect();
-      // Calculate coordinates normalized to the 640x640 space used by the model
-      const currentX = ((e.clientX - rect.left) / rect.width) * 640;
-      const currentY = ((e.clientY - rect.top) / rect.height) * 640;
+      
+      const currentX = (e.clientX - rect.left) / rect.width;
+      const currentY = (e.clientY - rect.top) / rect.height;
 
-      setManualDetections(prev => prev.map(det => {
+      setManualDetections((prev) => prev.map((det) => {
         if (det.id === resizingId) {
-          // Update the bottom-right coordinates (x2, y2)
-          // We enforce a minimum size of 10x10 to prevent inversion
-          const x2 = Math.max(det.bbox[0] + 10, currentX);
-          const y2 = Math.max(det.bbox[1] + 10, currentY);
-          return { ...det, bbox: [det.bbox[0], det.bbox[1], x2, y2] };
+          // --- RESIZE LOGIC ---
+          const minSize = 0.02;
+          const x2 = Math.max(det.bbox[0] + minSize, Math.min(currentX, 1));
+          const y2 = Math.max(det.bbox[1] + minSize, Math.min(currentY, 1));
+          return { ...det, bbox: [det.bbox[0], det.bbox[1], x2, y2] as [number, number, number, number] };
+        } 
+        
+        if (det.id === draggingId) {
+          // --- DRAG LOGIC ---
+          const width = det.bbox[2] - det.bbox[0];
+          const height = det.bbox[3] - det.bbox[1];
+          
+          // Calculate new top-left based on mouse position minus the original grab offset
+          let newX1 = currentX - dragStart.x;
+          let newY1 = currentY - dragStart.y;
+
+          // Boundary checks to keep it inside the image
+          newX1 = Math.max(0, Math.min(newX1, 1 - width));
+          newY1 = Math.max(0, Math.min(newY1, 1 - height));
+
+          return { 
+            ...det, 
+            bbox: [newX1, newY1, newX1 + width, newY1 + height] as [number, number, number, number] 
+          };
         }
         return det;
       }));
@@ -247,9 +274,10 @@ const App = () => {
 
     const handleGlobalMouseUp = () => {
       setResizingId(null);
+      setDraggingId(null);
     };
 
-    if (resizingId) {
+    if (resizingId || draggingId) {
       window.addEventListener('mousemove', handleGlobalMouseMove);
       window.addEventListener('mouseup', handleGlobalMouseUp);
     }
@@ -258,7 +286,7 @@ const App = () => {
       window.removeEventListener('mousemove', handleGlobalMouseMove);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [resizingId]);
+  }, [resizingId, draggingId, dragStart]);
 
   // --- MANUAL TAGGING LOGIC ---
   const handleImageClick = (e) => {
@@ -302,49 +330,77 @@ const App = () => {
   }, [analysisResults, manualDetections]);
 
   // --- MODULES ---
-  const DashboardModule = () => (
+const DashboardModule = () => {
+  const totalDetections = combinedDetections.length;
+
+  const systemResponseTime = 120; 
+
+  const resolvedPercentage = totalDetections > 0
+    ? Math.min(100, Math.round((manualDetections.length / totalDetections) * 100))
+    : 0;
+
+  const weeklyData = useMemo(() => {
+    return [5, 8, 6, 10, 7, 12, 9];
+  }, []);
+
+  // ✅ FIX: prevent divide-by-zero
+  const maxVal = Math.max(...weeklyData, 1);
+
+  return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+      {/* TOP STATS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { label: 'Health Score', val: '92.1%', icon: Activity, color: 'text-emerald-500' },
-          { label: 'Total Assets', val: assets.length, icon: Database, color: 'text-indigo-500' },
-          { label: 'Verified Issues', val: combinedDetections.length.toString().padStart(2, '0'), icon: AlertTriangle, color: 'text-amber-500' },
-          { label: 'AI Accuracy', val: '91.4%', icon: Target, color: 'text-rose-500' },
-        ].map((stat, i) => (
-          <div key={i} className="bg-white/5 border border-white/5 p-6 rounded-[2rem] hover:bg-white/[0.08] transition-all">
-            <stat.icon size={20} className={`${stat.color} mb-4`} />
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">{stat.label}</h3>
-            <p className="text-2xl font-black text-white">{stat.val}</p>
-          </div>
-        ))}
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-[#0c0e14] border border-white/5 p-8 rounded-[3rem]">
-          <div className="flex justify-between items-center mb-10">
-            <h3 className="text-sm font-black uppercase tracking-widest text-white">Detection Trends (Weekly)</h3>
-            <TrendingUp size={18} className="text-indigo-500" />
-          </div>
-          <div className="h-48 flex items-end gap-3 px-2">
-            {[30, 45, 35, 70, 50, 65, 85, 60, 75, 40].map((h, i) => (
-              <div key={i} className="flex-1 bg-white/5 rounded-t-xl relative group overflow-hidden">
-                <div className="absolute bottom-0 w-full bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t-xl transition-all duration-700" style={{ height: `${h}%` }} />
-              </div>
-            ))}
-          </div>
+        <div className="bg-white/5 border border-white/5 p-6 rounded-[2rem]">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Total Detection</p>
+          <p className="text-2xl font-black text-white">{totalDetections}</p>
         </div>
-        <div className="bg-indigo-600 p-8 rounded-[3rem] text-white flex flex-col justify-between shadow-2xl shadow-indigo-600/20">
-          <div>
-            <h3 className="font-black text-xl leading-tight mb-2 italic uppercase">Smart<br/>Correction</h3>
-            <p className="text-xs opacity-70 leading-relaxed">Click to tag missed defects. Use the handle on the bottom-right of boxes to resize.</p>
-          </div>
-          <button onClick={() => setActiveTab('analysis')} className="w-full bg-black text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all">
-            Launch Analysis
-          </button>
+
+        <div className="bg-white/5 border border-white/5 p-6 rounded-[2rem]">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">System Response Time</p>
+          <p className="text-2xl font-black text-white">{systemResponseTime} ms</p>
+        </div>
+
+        <div className="bg-white/5 border border-white/5 p-6 rounded-[2rem]">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Resolved</p>
+          <p className="text-2xl font-black text-emerald-400">{resolvedPercentage}%</p>
+        </div>
+
+        <div className="bg-white/5 border border-white/5 p-6 rounded-[2rem]">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Weekly Detection</p>
+          <p className="text-2xl font-black text-white">{weeklyData.reduce((a,b)=>a+b,0)}</p>
+        </div>
+      </div>
+
+      {/* WEEKLY GRAPH */}
+      <div className="bg-[#0c0e14] border border-white/5 p-8 rounded-[3rem]">
+        <h3 className="text-sm font-black uppercase tracking-widest text-white mb-6">
+          Weekly Detection Trend
+        </h3>
+
+        <div className="h-48 flex items-end gap-3 px-2">
+          {weeklyData.map((value, i) => (
+            <div key={i} className="flex-1 flex flex-col justify-end">
+              {/* bar */}
+              <div
+                className="w-full bg-indigo-500 rounded-t-xl transition-all duration-700"
+                style={{
+                  height: `${(value / maxVal) * 100}%`,
+                  minHeight: value > 0 ? '6px' : '0px'
+                }}
+              />
+
+              {/* label */}
+              <span className="text-[9px] text-slate-500 text-center mt-2 font-bold">
+                {value}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
+};
 
   const AnalysisModule = () => {
     const frequencyData = useMemo(() => {
@@ -391,63 +447,87 @@ const App = () => {
                 
                 <div className="absolute inset-0 pointer-events-auto">
                   {!isAnalyzing && combinedDetections.map((det) => (
-                    <div 
-                      key={det.id}
-                      onContextMenu={(e) => removeDetection(e, det.id, det.isManual)}
-                      className={`absolute border-2 transition-colors ${
-                        det.isManual ? 'border-amber-400 bg-amber-400/20 shadow-[0_0_15px_rgba(251,191,36,0.2)]' : 'border-indigo-400 bg-indigo-500/10'
-                      } group/tag animate-in fade-in zoom-in-95 duration-200`}
-                      style={{
-                        left: `${det.bbox[0] * 100}%`,
-                        top: `${det.bbox[1] * 100}%`,
-                        width: `${(det.bbox[2] - det.bbox[0]) * 100}%`,
-                        height: `${(det.bbox[3] - det.bbox[1]) * 100}%`,
-                      }}
-                    >
+                      <div 
+                        key={det.id}
+                        className={`absolute border-2 cursor-move ${
+                          det.isManual ? 'border-amber-400 bg-amber-400/20' : 'border-indigo-400 bg-indigo-500/10'
+                        }`}
+                        style={{
+                          left: `${det.bbox[0] * 100}%`,
+                          top: `${det.bbox[1] * 100}%`,
+                          width: `${(det.bbox[2] - det.bbox[0]) * 100}%`,
+                          height: `${(det.bbox[3] - det.bbox[1]) * 100}%`,
+                        }}
+                        onMouseDown={(e) => {
+                            if (!det.isManual) return;
+                            e.preventDefault(); 
+                            e.stopPropagation(); // Prevents creating a new box on the image
+                            
+                            const rect = imageContainerRef.current!.getBoundingClientRect();
+                            const clickX = (e.clientX - rect.left) / rect.width;
+                            const clickY = (e.clientY - rect.top) / rect.height;
+                            
+                            setDragStart({ x: clickX - det.bbox[0], y: clickY - det.bbox[1] });
+                            setDraggingId(det.id);
+                        }}
+                      >
                       {/* Tag Label with Delete Button */}
-                      <div className={`absolute -top-7 left-0 h-6 flex items-center rounded-sm text-[9px] font-black uppercase whitespace-nowrap z-30 shadow-xl overflow-hidden ${
-                        det.isManual ? 'bg-amber-500 text-black' : 'bg-indigo-600 text-white'
-                      }`}>
-                        <div className="px-2">
-                          {det.isManual ? (
+                        <div className={`absolute -top-7 left-0 h-6 flex items-center rounded-sm text-[9px] font-black uppercase whitespace-nowrap z-30 shadow-xl overflow-hidden ${
+                          det.isManual ? 'bg-amber-500 text-black' : 'bg-indigo-600 text-white'
+                        }`}>
+                          <div className="px-2">
+                            {det.isManual ? (
                             <select 
                               className="bg-transparent border-none outline-none font-black cursor-pointer"
                               value={det.type}
-                              onChange={(e) => updateTagType(det.id, e.target.value)}
+                              // 1. Prevents the drag logic from starting
+                              onMouseDown={(e) => e.stopPropagation()} 
+                              // 2. Prevents a new box from being created on the image
                               onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                updateTagType(det.id, e.target.value);
+                              }}
                             >
-                              {MODEL_CLASSES.map(c => <option key={c} value={c} className="text-black">{c}</option>)}
+                              {MODEL_CLASSES.map(c => (
+                                <option key={c} value={c} className="text-black">
+                                  {c}
+                                </option>
+                              ))}
                             </select>
-                          ) : (
-                            `${det.type} • ${Math.round(det.confidence * 100)}%`
-                          )}
+                            ) : (
+                              `${det.type} • ${Math.round(det.confidence * 100)}%`
+                            )}
+                          </div>
+                          
+                          <button 
+                            onClick={(e) => removeDetection(e, det.id, det.isManual)}
+                            // ADD THIS: Critical to allow the remove click to work
+                            onMouseDown={(e) => e.stopPropagation()} 
+                            className={`h-full aspect-square flex items-center justify-center border-l transition-colors ${
+                              det.isManual ? 'border-black/10 hover:bg-black/20' : 'border-white/10 hover:bg-white/20'
+                            }`}
+                          >
+                            <X size={10} strokeWidth={4} />
+                          </button>
                         </div>
-                        
-                        <button 
-                          onClick={(e) => removeDetection(e, det.id, det.isManual)}
-                          className={`h-full aspect-square flex items-center justify-center border-l transition-colors ${
-                            det.isManual ? 'border-black/10 hover:bg-black/20' : 'border-white/10 hover:bg-white/20'
-                          }`}
-                        >
-                          <X size={10} strokeWidth={4} />
-                        </button>
-                      </div>
 
-                      {/* RESIZE HANDLE - Only for Manual Tags */}
-                      {det.isManual && (
-                        <div 
-                          className="absolute -right-1 -bottom-1 w-4 h-4 cursor-nwse-resize z-40 flex items-center justify-center group-hover/tag:scale-125 transition-transform"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setResizingId(det.id);
-                          }}
-                        >
-                          <div className="w-2 h-2 bg-amber-400 rounded-full border border-black/20 shadow-sm" />
-                        </div>
-                      )}
+                        {/* RESIZE HANDLE - Only for Manual Tags */}
+                        {det.isManual && (
+                          <div 
+                            className="absolute -right-2 -bottom-2 w-6 h-6 cursor-nwse-resize z-50 flex items-center justify-center group-hover/tag:scale-110 transition-transform"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setResizingId(det.id);
+                            }}
+                          >
+                            {/* The visible dot */}
+                            <div className="w-2.5 h-2.5 bg-white rounded-full border-2 border-amber-500 shadow-lg" />
+                          </div>
+                        )}
                     </div>
-                  ))}
+                    ))}
                 </div>
 
                 {isAnalyzing && (
