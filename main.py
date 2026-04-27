@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from ultralytics import YOLO
 import numpy as np
+import os
 
 # 1. Initialize FastAPI
 app = FastAPI(title="Hoverscan AI Backend", description="YOLOv8 Inference API for Bridge Defects")
@@ -21,7 +22,8 @@ app.add_middleware(
 # 3. Load YOLOv8 Model
 # Ensure 'best.pt' is in the same directory as this file
 # Change this path to the location of your Roboflow weights
-model_path = r"C:\Users\imran\Downloads\Hoverscan LATEST\Hoverscan websiteee\backend\best.pt"
+base_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(base_dir, "best.pt")
 
 try:
     model = YOLO(model_path)
@@ -54,14 +56,14 @@ async def analyze_image(file: UploadFile = File(...)):
         image = Image.open(io.BytesIO(contents)).convert("RGB")
 
         # Run Inference
-        results = model.predict(source=image, conf=0.45, save=False)
+        results = model.predict(source=image, conf=0.1, save=False)
         
         detections = []
         for r in results:
             for box in r.boxes:
                 coords = box.xyxyn[0].tolist() # MUST BE xyxyn
                 detections.append({
-                    "type": model.names[int(box.cls[0])],
+                    "type": str(model.names[int(box.cls[0])]), # Add str() to be safe
                     "confidence": float(box.conf[0]),
                     "bbox": coords, # Now sends [xmin, ymin, xmax, ymax] as 0-1
                     "severity": "High" if float(box.conf[0]) > 0.8 else "Low"

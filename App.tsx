@@ -1,28 +1,29 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap, ZoomControl, LayersControl } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+// Use the imports you already have to fix the icon paths
+import icon from 'leaflet/dist/images/marker-icon.png';
+import shadow from 'leaflet/dist/images/marker-shadow.png';
 
 const DefaultIcon = L.icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconUrl: icon,
+  shadowUrl: shadow,
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
 });
+
 L.Marker.prototype.options.icon = DefaultIcon;
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
-  LayoutDashboard, Map as MapIcon, Box, AlertCircle, 
-  ChevronRight, TrendingUp, Scan, 
-  Image as ImageIcon, Upload, RefreshCw, AlertTriangle,
-  Camera, Target, Layers, MapPin, 
-  Database, CheckCircle2, MoreVertical, Bug,
-  BarChart3, Activity, FileText, Search, Filter, XCircle,
-  MousePointer2, Trash2, X, MoveDiagonal2
+  LayoutDashboard, Map as MapIcon, AlertTriangle, 
+  ChevronRight, Scan, Image as ImageIcon,
+  RefreshCw, Camera, CheckCircle2,
+  BarChart3, Database, MousePointer2, 
+  X, MoveDiagonal2
 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 // --- CONFIGURATION FROM DATA.YAML ---
 const MODEL_CLASSES = [
@@ -59,7 +60,7 @@ const MapViewModule = () => {
       { id: 'AST-302', name: 'Batang Saribas Bridge', coords: [1.5360, 111.2340], status: 'Verified' },
       
       // --- SIBU DIVISION ---
-      { id: 'AST-103', name: 'Lanang Bridge', coords: [2.2439, 111.8326], status: 'Verified' },
+      { id: 'AST-105', name: 'Lanang Bridge', coords: [2.2439, 111.8326], status: 'Verified' },
       { id: 'AST-401', name: 'Durin Bridge', coords: [2.1585, 112.0125], status: 'Verified' },
       { id: 'AST-402', name: 'Batang Igan Bridge', coords: [2.3160, 111.8280], status: 'Verified' },
       { id: 'AST-403', name: 'Batang Lebaan Bridge', coords: [2.2950, 111.6250], status: 'Verified' },
@@ -164,7 +165,7 @@ interface Detection {
   id: string | number;
   type: string;
   confidence: number;
-  bbox: [number, number, number, number]; // [x1, y1, x2, y2]
+  bbox: [number, number, number, number];
   isManual: boolean;
 }
 
@@ -173,20 +174,20 @@ const App = () => {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [uploadedImage, setUploadedImage] = useState(null);
-  const [analysisResults, setAnalysisResults] = useState(null);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<any>({});
   const [manualDetections, setManualDetections] = useState<Detection[]>([]);
   const [resizingId, setResizingId] = useState(null); // Track which box is being resized
-  const [assets, setAssets] = useState([
+  const [assets] = useState([
     { id: 'AST-992', name: 'Batang Sadong Bridge.jpg', date: '2026-04-10', status: 'Verified' },
     { id: 'AST-441', name: 'Darul Hana S-Bridge.png', date: '2026-04-12', status: 'Pending' }
   ]);
 
-  const fileInputRef = useRef(null);
-  const imageContainerRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
 
   // --- AI INFERENCE ---
-  const runInference = async (file) => {
+  const runInference = async (file: string | Blob) => {
     setIsAnalyzing(true);
     try {
       // Create FormData and append the actual file object
@@ -212,20 +213,20 @@ const App = () => {
     }
   };
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => setUploadedImage(event.target.result);
-      reader.readAsDataURL(file);
       
-      const newId = `AST-${Math.floor(Math.random() * 900 + 100)}`;
-      setAssets(prev => [{ 
-        id: newId, 
-        name: file.name, 
-        date: new Date().toISOString().split('T')[0], 
-        status: 'Analyzing' 
-      }, ...prev]);
+      reader.onload = (event) => {
+        // Use optional chaining and type assertion to clear the 'null' error
+        const result = event.target?.result;
+        if (typeof result === 'string') {
+          setUploadedImage(result);
+        }
+      };
+    
+    reader.readAsDataURL(file);
       
       setActiveTab('analysis');
       runInference(file);
@@ -234,7 +235,7 @@ const App = () => {
 
 // --- RESIZING HANDLER ---
 useEffect(() => {
-    const handleGlobalMouseMove = (e: MouseEvent) => {
+    const handleGlobalMouseMove = (e: globalThis.MouseEvent) => {
       if (!imageContainerRef.current) return;
       const rect = imageContainerRef.current.getBoundingClientRect();
       
@@ -289,7 +290,7 @@ useEffect(() => {
   }, [resizingId, draggingId, dragStart]);
 
   // --- MANUAL TAGGING LOGIC ---
-  const handleImageClick = (e) => {
+  const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     // Calculate relative position (0 to 1)
     const x = (e.clientX - rect.left) / rect.width;
@@ -299,13 +300,13 @@ useEffect(() => {
       id: `manual-${Date.now()}`,
       type: 'crack', 
       confidence: 1.0,
-      bbox: [x - 0.05, y - 0.05, x + 0.05, y + 0.05], // Normalized
+      bbox: [x - 0.05, y - 0.05, x + 0.05, y + 0.05] as [number, number, number, number], // Normalized
       isManual: true
     };
     setManualDetections(prev => [...prev, newTag]);
   };
 
-  const removeDetection = (e, id, isManual) => {
+  const removeDetection = (e: React.MouseEvent<HTMLButtonElement>, id: string | number, isManual: boolean) => {
     if (e) {
         e.preventDefault();
         e.stopPropagation();
@@ -313,19 +314,27 @@ useEffect(() => {
     if (isManual) {
       setManualDetections(prev => prev.filter(d => d.id !== id));
     } else {
-      setAnalysisResults(prev => ({
-        ...prev,
-        all_detections: prev.all_detections?.filter((_, idx) => idx !== id) || []
-      }));
+      setAnalysisResults((prev: any) => {
+        // If prev is null, return a fresh object instead of spreading
+        if (!prev) {
+          return { newProperty: 'value' };
+        }
+
+        // Now it's safe to spread because TypeScript knows prev is an object
+        return {
+          ...prev,
+          newProperty: 'value'
+        };
+      });
     }
   };
 
-  const updateTagType = (id, newType) => {
+  const updateTagType = (id: string | number, newType: string) => {
     setManualDetections(prev => prev.map(d => d.id === id ? { ...d, type: newType } : d));
   };
 
   const combinedDetections = useMemo(() => {
-    const ai = analysisResults?.all_detections?.map((d, i) => ({ ...d, id: i, isManual: false })) || [];
+    const ai = analysisResults?.all_detections?.map((d: any, i: any) => ({ ...d, id: i, isManual: false })) || [];
     return [...ai, ...manualDetections];
   }, [analysisResults, manualDetections]);
 
@@ -379,7 +388,7 @@ const DashboardModule = () => {
         </h3>
 
         <div className="h-48 flex items-end gap-3 px-2">
-          {weeklyData.map((value, i) => (
+          {weeklyData.map((value: number, i: number) => (
             <div key={i} className="flex-1 flex flex-col justify-end">
               {/* bar */}
               <div
@@ -404,9 +413,11 @@ const DashboardModule = () => {
 
   const AnalysisModule = () => {
     const frequencyData = useMemo(() => {
-      const counts = {};
+      const counts: Record<string, number> = {}; // Explicitly define as string-key/number-value
       MODEL_CLASSES.forEach(c => counts[c] = 0);
-      combinedDetections.forEach(d => { if(counts[d.type] !== undefined) counts[d.type]++ });
+      combinedDetections.forEach(d => { 
+        if(counts[d.type] !== undefined) counts[d.type]++; 
+      });
       return counts;
     }, [combinedDetections]);
 
@@ -496,7 +507,7 @@ const DashboardModule = () => {
                               ))}
                             </select>
                             ) : (
-                              `${det.type} • ${Math.round(det.confidence * 100)}%`
+                              `${String(det.type)} • ${Math.round(det.confidence * 100)}%`
                             )}
                           </div>
                           
