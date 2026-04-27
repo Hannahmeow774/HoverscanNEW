@@ -1,3 +1,18 @@
+import { MapContainer, TileLayer, Marker, Popup, useMap, ZoomControl, LayersControl } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+const DefaultIcon = L.icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Map as MapIcon, Box, AlertCircle, 
@@ -15,6 +30,136 @@ const MODEL_CLASSES = [
   'road bleeding', 'rust', 'spalling', 'spalling expose rebar', 
   'staining', 'vegetation'
 ];
+
+const MapResizer = () => {
+  const map = useMap();
+  useEffect(() => {
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+  }, [map]);
+  return null;
+};
+
+const MapViewModule = () => {
+    const bridgeAssets = [
+      // --- KUCHING DIVISION ---
+      { id: 'AST-441', name: 'Darul Hana S-Bridge', coords: [1.5604, 110.3440], status: 'Pending' },
+      { id: 'AST-101', name: 'Satok Suspension Bridge', coords: [1.554417, 110.324667], status: 'Verified' },
+      { id: 'AST-102', name: 'Tun Salahuddin Bridge', coords: [1.554972, 110.325167], status: 'Verified' },
+      { id: 'AST-103', name: 'Tanah Puteh Bridge', coords: [1.5492, 110.3780], status: 'Verified' },
+      { id: 'AST-104', name: 'Batu Kawa Bridge', coords: [1.5144, 110.2975], status: 'Analyzing' },
+      
+      // --- SAMARAHAN / SIMUNJAN ---
+      { id: 'AST-992', name: 'Batang Sadong Bridge', coords: [1.4473, 110.6897], status: 'Verified' },
+      { id: 'AST-201', name: 'Batang Samarahan Bridge', coords: [1.5342, 110.4910], status: 'Verified' },
+      
+      // --- SRI AMAN / BETONG ---
+      { id: 'AST-301', name: 'Batang Lupar 1 Bridge (U/C)', coords: [1.5137, 110.9770], status: 'Analyzing' },
+      { id: 'AST-302', name: 'Batang Saribas Bridge', coords: [1.5360, 111.2340], status: 'Verified' },
+      
+      // --- SIBU DIVISION ---
+      { id: 'AST-103', name: 'Lanang Bridge', coords: [2.2439, 111.8326], status: 'Verified' },
+      { id: 'AST-401', name: 'Durin Bridge', coords: [2.1585, 112.0125], status: 'Verified' },
+      { id: 'AST-402', name: 'Batang Igan Bridge', coords: [2.3160, 111.8280], status: 'Verified' },
+      { id: 'AST-403', name: 'Batang Lebaan Bridge', coords: [2.2950, 111.6250], status: 'Verified' },
+      
+      // --- BINTULU DIVISION ---
+      { id: 'AST-502', name: 'Bintulu-Jepak Bridge', coords: [3.1764, 113.0333], status: 'Analyzing' },
+      { id: 'AST-501', name: 'Batang Kemena Bridge', coords: [3.1610, 113.0640], status: 'Verified' },
+      
+      // --- MIRI DIVISION ---
+      { id: 'AST-882', name: 'Miri-Baram Bridge', coords: [4.5822, 114.1130], status: 'Verified' },
+      { id: 'AST-601', name: 'Pujut 7 Bridge', coords: [4.4320, 114.0210], status: 'Verified' },
+      
+      // --- LIMBANG / LAWAS ---
+      { id: 'AST-701', name: 'Limbang Bridge', coords: [4.7520, 115.0110], status: 'Verified' },
+      { id: 'AST-702', name: 'Lawas Bridge', coords: [4.8580, 115.4050], status: 'Verified' }
+    ];
+
+  return (
+    <div className="h-full w-full min-h-[600px] rounded-none overflow-hidden border border-white/10 bg-[#0c0e14] relative shadow-2xl">
+      <MapContainer 
+        center={[2.5, 113.0]} 
+        zoom={7} 
+        scrollWheelZoom={true}
+        zoomControl={false}
+        style={{ height: '100%', width: '100%', position: 'absolute', inset: 0 }}
+        className="z-0"
+      >
+        <MapResizer />
+        <ZoomControl position="bottomright" />
+
+        <LayersControl position="topright">
+          {/* 1. Standard Dark View (Default) */}
+          <LayersControl.BaseLayer checked name="Dark View">
+            <TileLayer
+              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+              attribution='&copy; CartoDB'
+            />
+          </LayersControl.BaseLayer>
+
+          {/* 2. Satellite View */}
+          <LayersControl.BaseLayer name="Satellite View">
+            <TileLayer
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              attribution='&copy; Esri'
+            />
+          </LayersControl.BaseLayer>
+
+          {/* 3. Terrain / Outdoor View */}
+          <LayersControl.BaseLayer name="Terrain View">
+            <TileLayer
+              url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+              attribution='&copy; OpenTopoMap'
+            />
+          </LayersControl.BaseLayer>
+        </LayersControl>
+        
+      {bridgeAssets.map((bridge) => (
+        <Marker key={bridge.id} position={bridge.coords as [number, number]}>
+          <Popup minWidth={150}>
+            <div className="p-1 select-none">
+              {/* Bridge ID */}
+              <p className="text-[10px] font-black text-indigo-400 uppercase tracking-tighter mb-0.5">
+                {bridge.id}
+              </p>
+              
+              {/* Bridge Name - Ensure this color is explicit */}
+              <h3 className="font-bold text-white text-sm leading-tight mb-2">
+                {bridge.name}
+              </h3>
+              
+              {/* Status Tag */}
+              <div className="flex items-center gap-2">
+                <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${
+                  bridge.status === 'Verified' 
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                    : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                }`}>
+                  {bridge.status}
+                </span>
+              </div>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
+      </MapContainer>
+
+      {/* Aesthetic Overlay */}
+      <div className="absolute top-8 left-8 z-[1000] pointer-events-none">
+        <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-6 rounded-[2rem]">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+            <h3 className="text-white font-black text-xs uppercase tracking-widest italic">Live Geospatial Feed</h3>
+          </div>
+          <p className="text-slate-500 text-[10px] mt-1 font-bold">Region: Sarawak, Malaysia</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -34,22 +179,25 @@ const App = () => {
   // --- AI INFERENCE ---
   const runInference = async (file) => {
     setIsAnalyzing(true);
-    setAnalysisResults(null);
-    setManualDetections([]); 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
+      // Create FormData and append the actual file object
+      const formData = new FormData();
+      formData.append('file', file);
+
       const response = await fetch('http://localhost:8000/analyze', { 
         method: 'POST', 
-        body: formData 
+        body: formData // Now formData is defined
       });
-      if (!response.ok) throw new Error('Network response was not ok');
+      
+      if (!response.ok) throw new Error('Backend unreachabe');
+      
       const data = await response.json();
-      setAnalysisResults(data);
+      setAnalysisResults(data); 
+      console.log("AI Response:", data);
     } catch (e) {
       console.error("Inference Error:", e);
-      setAnalysisResults({ error: "Local engine offline. Start main.py on port 8000." });
+      // Reset results on error to avoid showing stale data
+      setAnalysisResults(null);
     } finally {
       setIsAnalyzing(false);
     }
@@ -86,7 +234,7 @@ const App = () => {
       const currentY = ((e.clientY - rect.top) / rect.height) * 640;
 
       setManualDetections(prev => prev.map(det => {
-        if (det.id === resizingId) {
+         if (det.id === resizingId) {
           // Update the bottom-right coordinates (x2, y2)
           // We enforce a minimum size of 10x10 to prevent inversion
           const x2 = Math.max(det.bbox[0] + 10, currentX);
@@ -114,21 +262,18 @@ const App = () => {
 
   // --- MANUAL TAGGING LOGIC ---
   const handleImageClick = (e) => {
-    // Prevent creating a new tag if we are currently resizing an existing one
-    if (!uploadedImage || isAnalyzing || resizingId) return;
-    
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 640;
-    const y = ((e.clientY - rect.top) / rect.height) * 640;
+    // Calculate relative position (0 to 1)
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
 
     const newTag = {
       id: `manual-${Date.now()}`,
-      type: 'crack',
+      type: 'crack', 
       confidence: 1.0,
-      bbox: [x - 30, y - 30, x + 30, y + 30],
+      bbox: [x - 0.05, y - 0.05, x + 0.05, y + 0.05], // Normalized
       isManual: true
     };
-
     setManualDetections(prev => [...prev, newTag]);
   };
 
@@ -157,49 +302,77 @@ const App = () => {
   }, [analysisResults, manualDetections]);
 
   // --- MODULES ---
-  const DashboardModule = () => (
+const DashboardModule = () => {
+  const totalDetections = combinedDetections.length;
+
+  const systemResponseTime = 120; 
+
+  const resolvedPercentage = totalDetections > 0
+    ? Math.min(100, Math.round((manualDetections.length / totalDetections) * 100))
+    : 0;
+
+  const weeklyData = useMemo(() => {
+    return [5, 8, 6, 10, 7, 12, 9];
+  }, []);
+
+  // ✅ FIX: prevent divide-by-zero
+  const maxVal = Math.max(...weeklyData, 1);
+
+  return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+      {/* TOP STATS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { label: 'Health Score', val: '92.1%', icon: Activity, color: 'text-emerald-500' },
-          { label: 'Total Assets', val: assets.length, icon: Database, color: 'text-indigo-500' },
-          { label: 'Verified Issues', val: combinedDetections.length.toString().padStart(2, '0'), icon: AlertTriangle, color: 'text-amber-500' },
-          { label: 'AI Accuracy', val: '91.4%', icon: Target, color: 'text-rose-500' },
-        ].map((stat, i) => (
-          <div key={i} className="bg-white/5 border border-white/5 p-6 rounded-[2rem] hover:bg-white/[0.08] transition-all">
-            <stat.icon size={20} className={`${stat.color} mb-4`} />
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">{stat.label}</h3>
-            <p className="text-2xl font-black text-white">{stat.val}</p>
-          </div>
-        ))}
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-[#0c0e14] border border-white/5 p-8 rounded-[3rem]">
-          <div className="flex justify-between items-center mb-10">
-            <h3 className="text-sm font-black uppercase tracking-widest text-white">Detection Trends (Weekly)</h3>
-            <TrendingUp size={18} className="text-indigo-500" />
-          </div>
-          <div className="h-48 flex items-end gap-3 px-2">
-            {[30, 45, 35, 70, 50, 65, 85, 60, 75, 40].map((h, i) => (
-              <div key={i} className="flex-1 bg-white/5 rounded-t-xl relative group overflow-hidden">
-                <div className="absolute bottom-0 w-full bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t-xl transition-all duration-700" style={{ height: `${h}%` }} />
-              </div>
-            ))}
-          </div>
+        <div className="bg-white/5 border border-white/5 p-6 rounded-[2rem]">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Total Detection</p>
+          <p className="text-2xl font-black text-white">{totalDetections}</p>
         </div>
-        <div className="bg-indigo-600 p-8 rounded-[3rem] text-white flex flex-col justify-between shadow-2xl shadow-indigo-600/20">
-          <div>
-            <h3 className="font-black text-xl leading-tight mb-2 italic uppercase">Smart<br/>Correction</h3>
-            <p className="text-xs opacity-70 leading-relaxed">Click to tag missed defects. Use the handle on the bottom-right of boxes to resize.</p>
-          </div>
-          <button onClick={() => setActiveTab('analysis')} className="w-full bg-black text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all">
-            Launch Analysis
-          </button>
+
+        <div className="bg-white/5 border border-white/5 p-6 rounded-[2rem]">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">System Response Time</p>
+          <p className="text-2xl font-black text-white">{systemResponseTime} ms</p>
+        </div>
+
+        <div className="bg-white/5 border border-white/5 p-6 rounded-[2rem]">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Resolved</p>
+          <p className="text-2xl font-black text-emerald-400">{resolvedPercentage}%</p>
+        </div>
+
+        <div className="bg-white/5 border border-white/5 p-6 rounded-[2rem]">
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Weekly Detection</p>
+          <p className="text-2xl font-black text-white">{weeklyData.reduce((a,b)=>a+b,0)}</p>
+        </div>
+      </div>
+
+      {/* WEEKLY GRAPH */}
+      <div className="bg-[#0c0e14] border border-white/5 p-8 rounded-[3rem]">
+        <h3 className="text-sm font-black uppercase tracking-widest text-white mb-6">
+          Weekly Detection Trend
+        </h3>
+
+        <div className="h-48 flex items-end gap-3 px-2">
+          {weeklyData.map((value, i) => (
+            <div key={i} className="flex-1 flex flex-col justify-end">
+              {/* bar */}
+              <div
+                className="w-full bg-indigo-500 rounded-t-xl transition-all duration-700"
+                style={{
+                  height: `${(value / maxVal) * 100}%`,
+                  minHeight: value > 0 ? '6px' : '0px'
+                }}
+              />
+
+              {/* label */}
+              <span className="text-[9px] text-slate-500 text-center mt-2 font-bold">
+                {value}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
+};
 
   const AnalysisModule = () => {
     const frequencyData = useMemo(() => {
@@ -253,10 +426,10 @@ const App = () => {
                         det.isManual ? 'border-amber-400 bg-amber-400/20 shadow-[0_0_15px_rgba(251,191,36,0.2)]' : 'border-indigo-400 bg-indigo-500/10'
                       } group/tag animate-in fade-in zoom-in-95 duration-200`}
                       style={{
-                        left: `${(det.bbox[0] / 640) * 100}%`,
-                        top: `${(det.bbox[1] / 640) * 100}%`,
-                        width: `${((det.bbox[2] - det.bbox[0]) / 640) * 100}%`,
-                        height: `${((det.bbox[3] - det.bbox[1]) / 640) * 100}%`,
+                        left: `${det.bbox[0] * 100}%`,
+                        top: `${det.bbox[1] * 100}%`,
+                        width: `${(det.bbox[2] - det.bbox[0]) * 100}%`,
+                        height: `${(det.bbox[3] - det.bbox[1]) * 100}%`,
                       }}
                     >
                       {/* Tag Label with Delete Button */}
@@ -378,15 +551,6 @@ const App = () => {
     );
   };
 
-  const MapViewModule = () => (
-    <div className="h-full flex items-center justify-center border border-dashed border-white/10 rounded-[3rem] bg-white/5">
-      <div className="text-center">
-        <MapIcon size={40} className="text-indigo-500 mx-auto mb-4" />
-        <p className="text-xs font-black uppercase tracking-widest opacity-40 italic">Geospatial data offline</p>
-      </div>
-    </div>
-  );
-
   const AssetsModule = () => (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
       {assets.map((asset) => (
@@ -482,6 +646,12 @@ const App = () => {
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #4f46e5; }
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+          background: #0c0e14 !important;
+          color: #94a3b8 !important;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
       `}</style>
     </div>
   );
